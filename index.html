@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet-measure.css">
+        <style>
+            html, body {
+                width: 100%;
+                height: 100%;
+                padding: 0;
+                margin: 0;
+            }
+    
+            #container {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+    
+            #header {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background-color: #f8f8f8; /* Color de fondo opcional #f8f8f8*/
+                padding: 10px;
+                position: relative;
+                z-index: 1000; /* Asegura que el encabezado esté sobre el mapa */
+            }
+    
+            #logo {
+                height: 50px; /* Ajusta el tamaño del logo según sea necesario */
+                margin-right: 15px;
+            }
+    
+            h1 {
+                font-size: 28px; /* Ajusta el tamaño de la fuente según prefieras */
+                margin: 0;
+                color: #F2AE2E;
+                font-family: 'Arial', sans-serif;
+            }
+
+            #info-boxes {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 5px;
+                padding: 5px;
+                justify-content: space-around; /* Distribuye las cajas a lo largo del ancho */
+                align-items: center;
+            }
+
+            .info-box {
+                width: 17%; /* Ajusta el ancho según sea necesario */
+                padding: 17px; /* Ancho de las cajas */
+                color: white;
+                text-align: center;
+                border-radius: 8px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                font-family: Arial, sans-serif;
+
+            }
+
+            .info-value {
+                font-size: 24px;
+                font-weight: bold;
+                margin-bottom: 5px;
+            }
+
+            .info-label {
+                font-size: 12px;
+                text-transform: uppercase;
+            }
+    
+            #map {
+                flex: 1; /* Esto permite que el mapa ocupe el espacio restante */
+            }
+            </style>
+    
+        <title></title>
+    </head>
+    <body>
+        <div id="container">
+            <div id="header">
+                <img src="legend/canadevi.png" alt="Logo CANADEVI" id="logo"/>
+                <h1>Reservas territoriales para la construcción de vivienda de interés social</h1>
+            </div>
+            
+            <div id="info-boxes">
+                <div class="info-box" style="background-color: #F2AE2E;">
+                    <span class="info-value">47</span>
+                    <span class="info-label">TOTAL DE EMPRESAS</span>
+                </div>
+                <div class="info-box" style="background-color: #E74C3C;">
+                    <span class="info-value">86</span>
+                    <span class="info-label">TOTAL DE DESARROLLOS</span>
+                </div>
+                <div class="info-box" style="background-color: #3498DB;">
+                    <span class="info-value">18,213</span>
+                    <span class="info-label">TOTAL VIVIENDAS EN PRODUCCIÓN 2024</span>
+                </div>
+                <div class="info-box" style="background-color: #9B59B6;">
+                    <span class="info-value">26,842</span>
+                    <span class="info-label">TOTAL VIVIENDAS PROYECTADAS 2025</span>
+                </div>
+                <div class="info-box" style="background-color: #F39C12;">
+                    <span class="info-value">27,692</span>
+                    <span class="info-label">TOTAL VIVIENDAS PROYECTADAS 2026</span>
+                </div>
+            </div>
+        
+            <!-- Mapa -->
+            <div id="map"></div>
+        </div>
+
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet-measure.js"></script>
+        <script src="data/Tipodeviviendayrecamaras_1.js"></script>
+        <script src="data/Viviendaproyectada2026_2.js"></script>
+        <script src="data/Viviendaproyectada2025_3.js"></script>
+        <script src="data/Viviendaenproduccin2024_4.js"></script>
+        <script src="data/Reservas_5.js"></script>
+        <script>
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:28, minZoom:5
+        }).fitBounds([[15.268278900061336,-111.93046220586851],[31.32387776990416,-82.46199107301165]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // add class to format popup if it contains media
+		function addClassToPopupIfMedia(content, popup) {
+			var tempDiv = document.createElement('div');
+			tempDiv.innerHTML = content;
+			if (tempDiv.querySelector('td img')) {
+				popup._contentNode.classList.add('media');
+					// Delay to force the redraw
+					setTimeout(function() {
+						popup.update();
+					}, 10);
+			} else {
+				popup._contentNode.classList.remove('media');
+			}
+		}
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].innerHTML = '';
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].className += ' fas fa-ruler';
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+            map.setMaxBounds(map.getBounds());
+        }
+        map.createPane('pane_Positron_0');
+        map.getPane('pane_Positron_0').style.zIndex = 400;
+        var layer_Positron_0 = L.tileLayer('https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+            pane: 'pane_Positron_0',
+            opacity: 1.0,
+            attribution: '<a href="https://cartodb.com/basemaps/">Map tiles by CartoDB, under CC BY 3.0. Data by OpenStreetMap, under ODbL.</a>',
+            minZoom: 5,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 20
+        });
+        layer_Positron_0;
+        map.addLayer(layer_Positron_0);
+        function pop_Tipodeviviendayrecamaras_1(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">MUNICIPIO</th>\
+                        <td>' + (feature.properties['NOMGEO'] !== null ? autolinker.link(feature.properties['NOMGEO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">ENTIDAD</th>\
+                        <td>' + (feature.properties['ENTIDAD'] !== null ? autolinker.link(feature.properties['ENTIDAD'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">TIPO DE VIVIENDA</th>\
+                        <td>' + (feature.properties['TIPO'] !== null ? autolinker.link(feature.properties['TIPO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">3 RECAMARAS</th>\
+                        <td>' + (feature.properties['3 REC'] !== null ? autolinker.link(feature.properties['3 REC'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">2 RECAMARAS</th>\
+                        <td>' + (feature.properties['2 REC'] !== null ? autolinker.link(feature.properties['2 REC'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">EN PRODUCCIÓN 2024</th>\
+                        <td>' + (feature.properties['VPROD2024'] !== null ? autolinker.link(feature.properties['VPROD2024'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">PROYECTADA 2025</th>\
+                        <td>' + (feature.properties['VPROY2025'] !== null ? autolinker.link(feature.properties['VPROY2025'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">PROYECTADA 2026</th>\
+                        <td>' + (feature.properties['VPROY2026'] !== null ? autolinker.link(feature.properties['VPROY2026'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">SUPERFICIE DEL LOTE</th>\
+                        <td>' + (feature.properties['SUP_LOTE'] !== null ? autolinker.link(feature.properties['SUP_LOTE'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">SUPERFICIE HABITACIONAL</th>\
+                        <td>' + (feature.properties['SUP_HAB'] !== null ? autolinker.link(feature.properties['SUP_HAB'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+        function style_Tipodeviviendayrecamaras_1_0(feature) {
+            var context = {
+                feature: feature,
+                variables: {}
+            };
+            // Start of if blocks and style check logic
+            if (exp_Tipodeviviendayrecamaras_1rule0_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(229,182,54,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,241,181,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule1_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(229,182,54,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,222,125,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule2_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(217,180,74,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(217,180,74,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule3_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(60,120,218,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(133,162,211,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule4_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(31,120,180,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(81,94,133,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule5_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(31,120,180,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(46,117,217,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule6_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(203,110,76,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,141,96,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule7_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(203,110,76,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(172,94,66,1.0)',
+                interactive: true,
+            };
+                }
+                else if (exp_Tipodeviviendayrecamaras_1rule8_eval_expression(context)) {
+                  return {
+                pane: 'pane_Tipodeviviendayrecamaras_1',
+                opacity: 1,
+                color: 'rgba(203,110,76,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(97,55,41,1.0)',
+                interactive: true,
+            };
+                }
+            else {
+                return {fill: false, stroke: false};
+            }
+        }
+        map.createPane('pane_Tipodeviviendayrecamaras_1');
+        map.getPane('pane_Tipodeviviendayrecamaras_1').style.zIndex = 401;
+        map.getPane('pane_Tipodeviviendayrecamaras_1').style['mix-blend-mode'] = 'normal';
+        var layer_Tipodeviviendayrecamaras_1 = new L.geoJson(json_Tipodeviviendayrecamaras_1, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Tipodeviviendayrecamaras_1',
+            layerName: 'layer_Tipodeviviendayrecamaras_1',
+            pane: 'pane_Tipodeviviendayrecamaras_1',
+            onEachFeature: pop_Tipodeviviendayrecamaras_1,
+            style: style_Tipodeviviendayrecamaras_1_0,
+        });
+        bounds_group.addLayer(layer_Tipodeviviendayrecamaras_1);
+        map.addLayer(layer_Tipodeviviendayrecamaras_1);
+        function pop_Viviendaproyectada2026_2(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">MUNICIPIO</th>\
+                        <td>' + (feature.properties['NOMGEO'] !== null ? autolinker.link(feature.properties['NOMGEO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">ENTIDAD</th>\
+                        <td>' + (feature.properties['ENTIDAD'] !== null ? autolinker.link(feature.properties['ENTIDAD'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">TIPO DE VIVIENDA</th>\
+                        <td>' + (feature.properties['TIPO'] !== null ? autolinker.link(feature.properties['TIPO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">PROYECTADA 2026</th>\
+                        <td>' + (feature.properties['VPROY2026'] !== null ? autolinker.link(feature.properties['VPROY2026'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_Viviendaproyectada2026_2_0(feature) {
+            if (feature.properties['VPROY2026'] >= 62.000000 && feature.properties['VPROY2026'] <= 400.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2026_2',
+                radius: 2.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(31,120,180,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROY2026'] >= 400.000000 && feature.properties['VPROY2026'] <= 986.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2026_2',
+                radius: 8.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(31,120,180,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROY2026'] >= 986.000000 && feature.properties['VPROY2026'] <= 3540.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2026_2',
+                radius: 14.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(31,120,180,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROY2026'] >= 3540.000000 && feature.properties['VPROY2026'] <= 6083.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2026_2',
+                radius: 20.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(31,120,180,0.4)',
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_Viviendaproyectada2026_2');
+        map.getPane('pane_Viviendaproyectada2026_2').style.zIndex = 402;
+        map.getPane('pane_Viviendaproyectada2026_2').style['mix-blend-mode'] = 'normal';
+        var layer_Viviendaproyectada2026_2 = new L.geoJson(json_Viviendaproyectada2026_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Viviendaproyectada2026_2',
+            layerName: 'layer_Viviendaproyectada2026_2',
+            pane: 'pane_Viviendaproyectada2026_2',
+            onEachFeature: pop_Viviendaproyectada2026_2,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_Viviendaproyectada2026_2_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_Viviendaproyectada2026_2);
+        map.addLayer(layer_Viviendaproyectada2026_2);
+        function pop_Viviendaproyectada2025_3(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">MUNICIPIO</th>\
+                        <td>' + (feature.properties['NOMGEO'] !== null ? autolinker.link(feature.properties['NOMGEO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">ENTIDAD</th>\
+                        <td>' + (feature.properties['ENTIDAD'] !== null ? autolinker.link(feature.properties['ENTIDAD'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">TIPO DE VIVIENDA</th>\
+                        <td>' + (feature.properties['TIPO'] !== null ? autolinker.link(feature.properties['TIPO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">PROYECTADA 2025</th>\
+                        <td>' + (feature.properties['VPROY2025'] !== null ? autolinker.link(feature.properties['VPROY2025'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_Viviendaproyectada2025_3_0(feature) {
+            if (feature.properties['VPROY2025'] >= 45.000000 && feature.properties['VPROY2025'] <= 340.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2025_3',
+                radius: 2.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(90,197,61,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROY2025'] >= 340.000000 && feature.properties['VPROY2025'] <= 1021.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2025_3',
+                radius: 8.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(90,197,61,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROY2025'] >= 1021.000000 && feature.properties['VPROY2025'] <= 2120.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2025_3',
+                radius: 14.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(90,197,61,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROY2025'] >= 2120.000000 && feature.properties['VPROY2025'] <= 4864.000000 ) {
+                return {
+                pane: 'pane_Viviendaproyectada2025_3',
+                radius: 20.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(90,197,61,0.4)',
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_Viviendaproyectada2025_3');
+        map.getPane('pane_Viviendaproyectada2025_3').style.zIndex = 403;
+        map.getPane('pane_Viviendaproyectada2025_3').style['mix-blend-mode'] = 'normal';
+        var layer_Viviendaproyectada2025_3 = new L.geoJson(json_Viviendaproyectada2025_3, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Viviendaproyectada2025_3',
+            layerName: 'layer_Viviendaproyectada2025_3',
+            pane: 'pane_Viviendaproyectada2025_3',
+            onEachFeature: pop_Viviendaproyectada2025_3,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_Viviendaproyectada2025_3_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_Viviendaproyectada2025_3);
+        map.addLayer(layer_Viviendaproyectada2025_3);
+        function pop_Viviendaenproduccin2024_4(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">MUNICIPIO</th>\
+                        <td>' + (feature.properties['NOMGEO'] !== null ? autolinker.link(feature.properties['NOMGEO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">ENTIDAD</th>\
+                        <td>' + (feature.properties['ENTIDAD'] !== null ? autolinker.link(feature.properties['ENTIDAD'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">TIPO DE VIVIENDA</th>\
+                        <td>' + (feature.properties['TIPO'] !== null ? autolinker.link(feature.properties['TIPO'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">EN PRODUCCIÓN 2024</th>\
+                        <td>' + (feature.properties['VPROD2024'] !== null ? autolinker.link(feature.properties['VPROD2024'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_Viviendaenproduccin2024_4_0(feature) {
+            if (feature.properties['VPROD2024'] >= 25.000000 && feature.properties['VPROD2024'] <= 200.000000 ) {
+                return {
+                pane: 'pane_Viviendaenproduccin2024_4',
+                radius: 2.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(223,72,231,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROD2024'] >= 200.000000 && feature.properties['VPROD2024'] <= 540.000000 ) {
+                return {
+                pane: 'pane_Viviendaenproduccin2024_4',
+                radius: 8.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(223,72,231,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROD2024'] >= 540.000000 && feature.properties['VPROD2024'] <= 1132.000000 ) {
+                return {
+                pane: 'pane_Viviendaenproduccin2024_4',
+                radius: 14.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(223,72,231,0.4)',
+                interactive: true,
+            }
+            }
+            if (feature.properties['VPROD2024'] >= 1132.000000 && feature.properties['VPROD2024'] <= 9373.000000 ) {
+                return {
+                pane: 'pane_Viviendaenproduccin2024_4',
+                radius: 20.0,
+                opacity: 1,
+                color: 'rgba(35,35,35,0.4)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(223,72,231,0.4)',
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_Viviendaenproduccin2024_4');
+        map.getPane('pane_Viviendaenproduccin2024_4').style.zIndex = 404;
+        map.getPane('pane_Viviendaenproduccin2024_4').style['mix-blend-mode'] = 'normal';
+        var layer_Viviendaenproduccin2024_4 = new L.geoJson(json_Viviendaenproduccin2024_4, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Viviendaenproduccin2024_4',
+            layerName: 'layer_Viviendaenproduccin2024_4',
+            pane: 'pane_Viviendaenproduccin2024_4',
+            onEachFeature: pop_Viviendaenproduccin2024_4,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_Viviendaenproduccin2024_4_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_Viviendaenproduccin2024_4);
+        map.addLayer(layer_Viviendaenproduccin2024_4);
+        function pop_Reservas_5(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">EMPRESA</th>\
+                        <td>' + (feature.properties['EMPRESA_1'] !== null ? autolinker.link(feature.properties['EMPRESA_1'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">DESARROLLO</th>\
+                        <td>' + (feature.properties['DESARROL_1'] !== null ? autolinker.link(feature.properties['DESARROL_1'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">EN PRODUCCIÓN 2024</th>\
+                        <td>' + (feature.properties['VPROD202_1'] !== null ? autolinker.link(feature.properties['VPROD202_1'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">PROYECTADA 2025</th>\
+                        <td>' + (feature.properties['VPROY202_1'] !== null ? autolinker.link(feature.properties['VPROY202_1'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">PROYECTADA 2026</th>\
+                        <td>' + (feature.properties['VPROY202_2'] !== null ? autolinker.link(feature.properties['VPROY202_2'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">SUPERFICIE HABITACIONAL</th>\
+                        <td>' + (feature.properties['SUP_HAB_1'] !== null ? autolinker.link(feature.properties['SUP_HAB_1'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">TIPO DE VIVIENDA</th>\
+                        <td>' + (feature.properties['TIPO_VIV_1'] !== null ? autolinker.link(feature.properties['TIPO_VIV_1'].toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_Reservas_5_0() {
+            return {
+                pane: 'pane_Reservas_5',
+                opacity: 1,
+                color: 'rgba(227,26,28,1.0)',
+                dashArray: '2.0,1.0',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(234,12,19,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_Reservas_5');
+        map.getPane('pane_Reservas_5').style.zIndex = 405;
+        map.getPane('pane_Reservas_5').style['mix-blend-mode'] = 'normal';
+        var layer_Reservas_5 = new L.geoJson(json_Reservas_5, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_Reservas_5',
+            layerName: 'layer_Reservas_5',
+            pane: 'pane_Reservas_5',
+            onEachFeature: pop_Reservas_5,
+            style: style_Reservas_5_0,
+        });
+        bounds_group.addLayer(layer_Reservas_5);
+        map.addLayer(layer_Reservas_5);
+        var overlaysTree = [
+        {label: '<b>Simbología</b>', selectAllCheckbox: true, children: [
+            {label: '<img src="legend/Reservas_5.png" /> Reservas', layer: layer_Reservas_5},
+            {label: 'Vivienda en producción 2024<br /><table><tr><td style="text-align: center;"><img src="legend/Viviendaenproduccin2024_4_252000.png" /></td><td>25 - 200</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaenproduccin2024_4_2005401.png" /></td><td>200 - 540</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaenproduccin2024_4_54011322.png" /></td><td>540 - 1132</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaenproduccin2024_4_113293733.png" /></td><td>1132 - 9373</td></tr></table>', layer: layer_Viviendaenproduccin2024_4},
+            {label: 'Vivienda proyectada 2025<br /><table><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2025_3_453400.png" /></td><td>45 - 340</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2025_3_34010211.png" /></td><td>340 - 1021</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2025_3_102121202.png" /></td><td>1021 - 2120</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2025_3_212048643.png" /></td><td>2120 - 4864</td></tr></table>', layer: layer_Viviendaproyectada2025_3},
+            {label: 'Vivienda proyectada 2026<br /><table><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2026_2_624000.png" /></td><td>62 - 400</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2026_2_4009861.png" /></td><td>400 - 986</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2026_2_98635402.png" /></td><td>986 - 3540</td></tr><tr><td style="text-align: center;"><img src="legend/Viviendaproyectada2026_2_354060833.png" /></td><td>3540 - 6083</td></tr></table>', layer: layer_Viviendaproyectada2026_2},
+            {label: 'Tipo de vivienda y recamaras<br /><table><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Ambas23rec0.png" /></td><td>Ambas: 2-3 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Ambas3rec1.png" /></td><td>Ambas: 3 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Ambas2rec2.png" /></td><td>Ambas: 2 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Horizontal23rec3.png" /></td><td>Horizontal: 2-3 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Horizontal3rec4.png" /></td><td>Horizontal: 3 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Horizontal2rec5.png" /></td><td>Horizontal: 2 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Vertical23rec6.png" /></td><td>Vertical: 2-3 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Vertical3rec7.png" /></td><td>Vertical: 3 rec</td></tr><tr><td style="text-align: center;"><img src="legend/Tipodeviviendayrecamaras_1_Vertical2rec8.png" /></td><td>Vertical: 2 rec</td></tr></table>', layer: layer_Tipodeviviendayrecamaras_1},]},
+            {label: "Positron", layer: layer_Positron_0},]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: true,
+        });
+        lay.addTo(map);
+        setBounds();
+        </script>
+    </body>
+</html>
